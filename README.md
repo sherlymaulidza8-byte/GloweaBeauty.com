@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Dashboard - Glow Skincare</title>
+  <title>Admin Dashboard - Glowea Beauty</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -297,7 +297,7 @@
     <div class="brand">
       <i class="fa-solid fa-spa"></i>
       <div>
-        <h4>Glow Skincare</h4>
+        <h4>Glowea Beauty</h4>
         <small>Admin Dashboard</small>
       </div>
     </div>
