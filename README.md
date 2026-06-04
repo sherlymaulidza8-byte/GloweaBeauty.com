@@ -1,562 +1,548 @@
-<?php
-session_start();
-include 'koneksi.php';
-
-$error = "";
-$success = "";
-
-// ======================
-// REGISTER
-// ======================
-if (isset($_POST['register'])) {
-    $nama = mysqli_real_escape_string($conn, $_POST['nama']);
-    $umur = mysqli_real_escape_string($conn, $_POST['umur']);
-    $jenis_kelamin = mysqli_real_escape_string($conn, $_POST['jenis_kelamin']);
-    $jenis_kulit = mysqli_real_escape_string($conn, $_POST['jenis_kulit']);
-    $email = mysqli_real_escape_string($conn, $_POST['email']);
-    $password = mysqli_real_escape_string($conn, $_POST['password']);
-    $confirm_password = mysqli_real_escape_string($conn, $_POST['confirm_password']);
-
-    if ($password !== $confirm_password) {
-        $error = "Password dan konfirmasi password tidak sama.";
-    } else {
-        $cek = mysqli_query($conn, "SELECT * FROM users WHERE email='$email'");
-        if (mysqli_num_rows($cek) > 0) {
-            $error = "Email sudah terdaftar.";
-        } else {
-            $hash = password_hash($password, PASSWORD_DEFAULT);
-            $query = mysqli_query($conn, "INSERT INTO users (nama, umur, jenis_kelamin, jenis_kulit, email, password) VALUES ('$nama', '$umur', '$jenis_kelamin', '$jenis_kulit', '$email', '$hash')");
-            if ($query) {
-                $success = "Registrasi berhasil, silakan login.";
-            } else {
-                $error = "Registrasi gagal.";
-            }
-        }
-    }
-}
-
-// ======================
-// LOGIN
-// ======================
-if (isset($_POST['login'])) {
-    $email = mysqli_real_escape_string($conn, $_POST['email']);
-    $password = mysqli_real_escape_string($conn, $_POST['password']);
-
-    $query = mysqli_query($conn, "SELECT * FROM users WHERE email='$email'");
-    if (mysqli_num_rows($query) > 0) {
-        $data = mysqli_fetch_assoc($query);
-        if (password_verify($password, $data['password'])) {
-            $_SESSION['user_id'] = $data['id'];
-            $_SESSION['nama'] = $data['nama'];
-            $_SESSION['email'] = $data['email'];
-            header("Location: index.php?page=home");
-            exit;
-        } else {
-            $error = "Email atau password salah.";
-        }
-    } else {
-        $error = "Email atau password salah.";
-    }
-}
-
-// ======================
-// CART ADD
-// ======================
-if (isset($_GET['add_cart'])) {
-    if (!isset($_SESSION['user_id'])) {
-        header("Location: index.php?page=login");
-        exit;
-    }
-    $id_user = $_SESSION['user_id'];
-    $id_produk = intval($_GET['add_cart']);
-
-    $cek = mysqli_query($conn, "SELECT * FROM cart WHERE id_user='$id_user' AND id_produk='$id_produk'");
-    if (mysqli_num_rows($cek) > 0) {
-        mysqli_query($conn, "UPDATE cart SET jumlah = jumlah + 1 WHERE id_user='$id_user' AND id_produk='$id_produk'");
-    } else {
-        mysqli_query($conn, "INSERT INTO cart (id_user, id_produk, jumlah) VALUES ('$id_user', '$id_produk', 1)");
-    }
-
-    header("Location: index.php?page=cart");
-    exit;
-}
-
-// ======================
-// CART REMOVE
-// ======================
-if (isset($_GET['remove_cart'])) {
-    if (!isset($_SESSION['user_id'])) {
-        header("Location: index.php?page=login");
-        exit;
-    }
-    $id_cart = intval($_GET['remove_cart']);
-    $id_user = $_SESSION['user_id'];
-    mysqli_query($conn, "DELETE FROM cart WHERE id_cart='$id_cart' AND id_user='$id_user'");
-    header("Location: index.php?page=cart");
-    exit;
-}
-
-// ======================
-// CHECKOUT
-// ======================
-if (isset($_POST['checkout'])) {
-    if (!isset($_SESSION['user_id'])) {
-        header("Location: index.php?page=login");
-        exit;
-    }
-
-    $id_user = $_SESSION['user_id'];
-    $nama_customer = mysqli_real_escape_string($conn, $_POST['nama_customer']);
-    $alamat = mysqli_real_escape_string($conn, $_POST['alamat']);
-    $nomor_whatsapp = mysqli_real_escape_string($conn, $_POST['nomor_whatsapp']);
-    $total_harga = intval($_POST['total_harga']);
-
-    $insert = mysqli_query($conn, "INSERT INTO orders (id_user, total_harga, alamat, nomor_whatsapp, tanggal_order) VALUES ('$id_user', '$total_harga', '$alamat', '$nomor_whatsapp', NOW())");
-    if ($insert) {
-        mysqli_query($conn, "DELETE FROM cart WHERE id_user='$id_user'");
-        $success = "Checkout berhasil! Pesanan Anda telah disimpan.";
-    } else {
-        $error = "Checkout gagal.";
-    }
-}
-
-$page = isset($_GET['page']) ? $_GET['page'] : (isset($_SESSION['user_id']) ? 'home' : 'login');
-
-// Ambil data produk
-$products = mysqli_query($conn, "SELECT * FROM products ORDER BY id_produk DESC");
-
-// Hitung cart
-$cart_total_items = 0;
-$cart_total_harga = 0;
-if (isset($_SESSION['user_id'])) {
-    $uid = $_SESSION['user_id'];
-    $cart_count_q = mysqli_query($conn, "SELECT SUM(jumlah) AS total FROM cart WHERE id_user='$uid'");
-    $cart_count_data = mysqli_fetch_assoc($cart_count_q);
-    $cart_total_items = $cart_count_data['total'] ? $cart_count_data['total'] : 0;
-}
-?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Glow Beauty Skincare</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <style>
-        :root{
-            --pink:#F8D7DA;
-            --cream:#FFF6EE;
-            --nude:#EFCFCF;
-            --white:#FFFFFF;
-            --text:#3b3b3b;
-            --soft-shadow:0 10px 30px rgba(0,0,0,.08);
-            --radius:22px;
-        }
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{
-            font-family:'Poppins',sans-serif;
-            background:linear-gradient(135deg,var(--cream),#fff, var(--pink));
-            color:var(--text);
-            scroll-behavior:smooth;
-        }
-        a{text-decoration:none;color:inherit}
-        .container{width:min(1200px,92%);margin:auto}
-        .btn{
-            display:inline-block;padding:12px 22px;border:none;border-radius:999px;
-            cursor:pointer;transition:.3s ease;font-weight:600
-        }
-        .btn:hover{transform:translateY(-3px);box-shadow:var(--soft-shadow)}
-        .btn-primary{background:linear-gradient(135deg,var(--pink),var(--nude));color:#222}
-        .btn-outline{background:#fff;border:1px solid #eee}
-        .card{
-            background:rgba(255,255,255,.8);
-            backdrop-filter:blur(10px);
-            border-radius:var(--radius);
-            box-shadow:var(--soft-shadow);
-        }
-        .section{padding:80px 0}
-        .title{font-size:2.2rem;font-weight:700;text-align:center;margin-bottom:10px}
-        .subtitle{text-align:center;color:#666;margin-bottom:35px}
-        .navbar{
-            position:sticky;top:0;z-index:999;
-            background:rgba(255,255,255,.75);backdrop-filter:blur(14px);
-            box-shadow:0 4px 20px rgba(0,0,0,.05)
-        }
-        .nav-wrap{display:flex;justify-content:space-between;align-items:center;padding:16px 0}
-        .logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.2rem}
-        .logo i{color:#e78ca3}
-        .nav-links{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
-        .nav-links a{padding:8px 12px;border-radius:999px;transition:.3s}
-        .nav-links a:hover{background:#fff0f3}
-        .badge{
-            background:#ff6b81;color:#fff;border-radius:999px;padding:2px 8px;font-size:.75rem
-        }
-        .hero{
-            min-height:90vh;display:grid;grid-template-columns:1.1fr .9fr;gap:30px;
-            align-items:center;padding:60px 0
-        }
-        .hero-box{
-            padding:40px
-        }
-        .hero h1{font-size:3.5rem;line-height:1.05;margin-bottom:18px}
-        .hero p{font-size:1.05rem;color:#666;margin-bottom:24px;max-width:560px}
-        .hero-visual{
-            height:520px;border-radius:32px;
-            background:linear-gradient(135deg,#fff,#fde6ea,#fff6ee);
-            display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden
-        }
-        .blob{
-            width:280px;height:280px;border-radius:50%;
-            background:radial-gradient(circle at top left,#f8d7da,#efcfcf);
-            filter:blur(2px);opacity:.9
-        }
-        .floating{
-            position:absolute;width:90px;height:90px;border-radius:22px;background:rgba(255,255,255,.75);
-            box-shadow:var(--soft-shadow);display:flex;align-items:center;justify-content:center;font-size:2rem
-        }
-        .f1{top:50px;left:50px}.f2{bottom:70px;right:60px}.f3{top:120px;right:80px}
-        .grid-products{
-            display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:22px
-        }
-        .product{
-            overflow:hidden;transition:.35s ease
-        }
-        .product:hover{transform:translateY(-8px)}
-        .product img{width:100%;height:240px;object-fit:cover;display:block}
-        .product-body{padding:18px}
-        .product h3{font-size:1.05rem;margin-bottom:6px}
-        .price{color:#c25b74;font-weight:700;margin:8px 0 14px}
-        .small{font-size:.92rem;color:#666}
-        .auth-wrap{
-            width:min(460px,92%);
-            margin:70px auto;
-            padding:34px
-        }
-        .auth-wrap h2{text-align:center;margin-bottom:18px}
-        form{display:grid;gap:14px}
-        input,select,textarea{
-            width:100%;padding:13px 15px;border:1px solid #eee;border-radius:16px;
-            outline:none;font-family:inherit;background:#fff
-        }
-        input:focus,select:focus,textarea:focus{border-color:#efcfcf;box-shadow:0 0 0 4px rgba(239,207,207,.25)}
-        .alert{
-            padding:12px 16px;border-radius:14px;margin-bottom:16px
-        }
-        .error{background:#ffe8ea;color:#b00020}
-        .success{background:#ecfff0;color:#146c2e}
-        .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-        .cart-list,.checkout-box,.admin-box{padding:26px}
-        .cart-item{
-            display:grid;grid-template-columns:90px 1fr auto;gap:14px;align-items:center;
-            padding:14px 0;border-bottom:1px solid #f1f1f1
-        }
-        .cart-item img{width:90px;height:90px;border-radius:18px;object-fit:cover}
-        .total-box{
-            display:flex;justify-content:space-between;align-items:center;margin-top:16px;
-            padding-top:16px;border-top:2px dashed #f1d5d9;font-weight:700
-        }
-        .footer{
-            padding:30px 0;text-align:center;color:#666
-        }
-        .socials{display:flex;justify-content:center;gap:14px;margin-top:12px}
-        .socials a{
-            width:44px;height:44px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;
-            box-shadow:var(--soft-shadow)
-        }
-        .chatbot{
-            position:fixed;right:20px;bottom:20px;z-index:9999
-        }
-        .chatbot a{
-            width:58px;height:58px;border-radius:50%;background:#25d366;color:#fff;
-            display:flex;align-items:center;justify-content:center;font-size:1.7rem;box-shadow:var(--soft-shadow)
-        }
-        .responsive-menu{display:none}
-        .hidden{display:none}
-        .admin-table{width:100%;border-collapse:collapse;overflow:hidden}
-        .admin-table th,.admin-table td{padding:12px;border-bottom:1px solid #f0f0f0;text-align:left;font-size:.95rem}
-        .admin-table th{background:#fff4f6}
-        .section-box{margin-top:30px}
-        .testi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
-        .testi{padding:22px}
-        .avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;margin-bottom:12px}
-        .anim{animation:fadeUp .8s ease}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
-        @media(max-width:900px){
-            .hero{grid-template-columns:1fr}
-            .hero h1{font-size:2.5rem}
-            .nav-links{display:none}
-            .responsive-menu{display:block}
-            .two-col{grid-template-columns:1fr}
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard - Glow Skincare</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --pink:#F8D7DA;
+      --cream:#FFF6EE;
+      --nude:#EFCFCF;
+      --white:#FFFFFF;
+      --text:#4a4a4a;
+      --shadow:0 10px 30px rgba(0,0,0,0.08);
+      --shadow-soft:0 6px 20px rgba(248,215,218,0.35);
+      --radius:20px;
+    }
+
+    *{
+      box-sizing:border-box;
+    }
+
+    body{
+      background: linear-gradient(135deg, var(--cream), #fff, var(--pink));
+      color: var(--text);
+      overflow-x: hidden;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .sidebar {
+      width: 250px;
+      min-height: 100vh;
+      background: linear-gradient(180deg, #fff, #fff8f9);
+      color: var(--text);
+      position: fixed;
+      top: 0;
+      left: 0;
+      padding: 24px 18px;
+      box-shadow: var(--shadow);
+      border-right: 1px solid rgba(239, 207, 207, 0.5);
+    }
+
+    .sidebar .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-bottom: 30px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #fff, #fff0f3);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .sidebar .brand i{
+      font-size: 1.5rem;
+      color: #e78ca3;
+    }
+
+    .sidebar h4 {
+      margin: 0;
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+
+    .sidebar small{
+      color:#888;
+      font-size:.82rem;
+    }
+
+    .sidebar a {
+      color: #666;
+      text-decoration: none;
+      display: block;
+      padding: 12px 14px;
+      border-radius: 14px;
+      margin-bottom: 10px;
+      transition: .3s ease;
+      font-weight: 500;
+    }
+
+    .sidebar a:hover,
+    .sidebar a.active {
+      background: linear-gradient(135deg, var(--pink), var(--nude));
+      color: #222;
+      transform: translateX(4px);
+    }
+
+    .sidebar a i{
+      width: 22px;
+    }
+
+    .main-content {
+      margin-left: 250px;
+      padding: 22px;
+    }
+
+    .topbar {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      padding: 16px 20px;
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      margin-bottom: 22px;
+      border: 1px solid rgba(239, 207, 207, 0.35);
+    }
+
+    .topbar h3{
+      margin:0;
+      font-weight:700;
+    }
+
+    .topbar .welcome{
+      color:#666;
+      font-size:.95rem;
+    }
+
+    .card-stat {
+      border: none;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      background: rgba(255,255,255,0.88);
+      backdrop-filter: blur(10px);
+      transition: .3s ease;
+    }
+
+    .card-stat:hover{
+      transform: translateY(-4px);
+      box-shadow: 0 14px 35px rgba(0,0,0,0.12);
+    }
+
+    .stat-icon{
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--pink), var(--nude));
+      color:#222;
+      font-size:1.3rem;
+    }
+
+    .card-title{
+      font-size:.95rem;
+      color:#777;
+      margin-bottom:6px;
+    }
+
+    .card-value{
+      font-size:1.7rem;
+      font-weight:700;
+      margin:0;
+    }
+
+    .topbar-cta{
+      background: linear-gradient(135deg, var(--pink), var(--nude));
+      color:#222;
+      border:none;
+      border-radius: 14px;
+      padding: 10px 16px;
+      font-weight: 600;
+      transition:.3s ease;
+    }
+
+    .topbar-cta:hover{
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .chart-card,
+    .table-card,
+    .form-card {
+      border: none;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      background: rgba(255,255,255,0.88);
+      backdrop-filter: blur(10px);
+    }
+
+    .section-title{
+      font-weight:700;
+      margin-bottom: 0;
+    }
+
+    .section-subtitle{
+      color:#777;
+      font-size:.92rem;
+    }
+
+    .list-group-item{
+      border: none;
+      padding-left: 0;
+      padding-right: 0;
+      background: transparent;
+      color:#555;
+    }
+
+    .badge-soft{
+      background: #fff0f4;
+      color: #b34b67;
+      border: 1px solid #f2c5d0;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-weight: 500;
+    }
+
+    .table thead th{
+      background: #fff4f7;
+      color:#555;
+      border-bottom: none;
+      font-weight: 600;
+    }
+
+    .table tbody tr:hover{
+      background: #fffafc;
+    }
+
+    .btn-pink{
+      background: linear-gradient(135deg, var(--pink), var(--nude));
+      color:#222;
+      border:none;
+      border-radius: 14px;
+      font-weight: 600;
+      padding: 10px 16px;
+      transition:.3s ease;
+    }
+
+    .btn-pink:hover{
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-soft);
+      color:#222;
+    }
+
+    .btn-outline-soft{
+      border:1px solid #f0c9d3;
+      background:#fff;
+      color:#555;
+      border-radius: 14px;
+      font-weight:600;
+      padding: 10px 16px;
+    }
+
+    .btn-outline-soft:hover{
+      background:#fff4f7;
+      color:#222;
+    }
+
+    .form-control, .form-select, textarea{
+      border-radius: 14px;
+      border: 1px solid #eed8de;
+      padding: 12px 14px;
+    }
+
+    .form-control:focus, .form-select:focus, textarea:focus{
+      border-color: #efcfcf;
+      box-shadow: 0 0 0 4px rgba(239,207,207,.22);
+    }
+
+    .action-btn{
+      border-radius: 12px;
+      padding: 7px 10px;
+      margin-right: 6px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width: 36px;
+      height: 36px;
+    }
+
+    .product-thumb{
+      width: 52px;
+      height: 52px;
+      object-fit: cover;
+      border-radius: 14px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: relative;
+        width: 100%;
+        min-height: auto;
+      }
+      .main-content {
+        margin-left: 0;
+      }
+    }
+  </style>
 </head>
 <body>
 
-<nav class="navbar">
-    <div class="container nav-wrap">
-        <div class="logo"><i class="fa-solid fa-spa"></i> Glow Skin</div>
-        <div class="nav-links">
-            <?php if(isset($_SESSION['user_id'])): ?>
-                <a href="#home">Home</a>
-                <a href="#product">Product</a>
-                <a href="#about">About</a>
-                <a href="#contact">Contact</a>
-                <a href="index.php?page=cart">Cart <span class="badge"><?php echo $cart_total_items; ?></span></a>
-                <a href="index.php?page=dashboard">Dashboard</a>
-                <a href="logout.php">Logout</a>
-            <?php else: ?>
-                <a href="index.php?page=login">Login</a>
-                <a href="index.php?page=register">Register</a>
-            <?php endif; ?>
-        </div>
+  <div class="sidebar">
+    <div class="brand">
+      <i class="fa-solid fa-spa"></i>
+      <div>
+        <h4>Glow Skincare</h4>
+        <small>Admin Dashboard</small>
+      </div>
     </div>
-</nav>
 
-<div class="container">
-<?php if($error): ?><div class="alert error anim"><?php echo $error; ?></div><?php endif; ?>
-<?php if($success): ?><div class="alert success anim"><?php echo $success; ?></div><?php endif; ?>
-</div>
+    <a href="#dashboard" class="active"><i class="fa-solid fa-gauge"></i> Dashboard</a>
+    <a href="#users"><i class="fa-solid fa-users"></i> Users</a>
+    <a href="#orders"><i class="fa-solid fa-bag-shopping"></i> Orders</a>
+    <a href="#products"><i class="fa-solid fa-box"></i> Products</a>
+    <a href="home.php"><i class="fa-solid fa-house"></i> Home</a>
+    <a href="logout.php"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+  </div>
 
-<?php if($page == 'login'): ?>
-<div class="auth-wrap card anim">
-    <h2>Login</h2>
-    <form method="post">
-        <input type="email" name="email" placeholder="Email" required>
-        <input type="password" name="password" placeholder="Password" required>
-        <button class="btn btn-primary" type="submit" name="login">Login</button>
-        <p style="text-align:center">Belum punya akun? <a href="index.php?page=register"><b>Register</b></a></p>
-    </form>
-</div>
-
-<?php elseif($page == 'register'): ?>
-<div class="auth-wrap card anim">
-    <h2>Register</h2>
-    <form method="post">
-        <input type="text" name="nama" placeholder="Nama lengkap" required>
-        <input type="number" name="umur" placeholder="Umur" required>
-        <select name="jenis_kelamin" required>
-            <option value="">Jenis Kelamin</option>
-            <option value="Perempuan">Perempuan</option>
-            <option value="Laki-laki">Laki-laki</option>
-        </select>
-        <select name="jenis_kulit" required>
-            <option value="">Jenis Kulit</option>
-            <option value="berminyak">Berminyak</option>
-            <option value="kering">Kering</option>
-            <option value="kombinasi">Kombinasi</option>
-            <option value="sensitif">Sensitif</option>
-            <option value="normal">Normal</option>
-        </select>
-        <input type="email" name="email" placeholder="Email" required>
-        <input type="password" name="password" placeholder="Password" required>
-        <input type="password" name="confirm_password" placeholder="Konfirmasi Password" required>
-        <button class="btn btn-primary" type="submit" name="register">Register</button>
-        <p style="text-align:center">Sudah punya akun? <a href="index.php?page=login"><b>Login</b></a></p>
-    </form>
-</div>
-
-<?php elseif($page == 'home' && isset($_SESSION['user_id'])): ?>
-<section class="section" id="home">
-    <div class="container hero">
-        <div class="hero-box card anim">
-            <h1>Reveal Your Natural Glow ✨</h1>
-            <p>Website skincare premium dengan nuansa clean girl aesthetic dan Korean skincare vibes. Elegan, lembut, modern, minimalis, dan responsive.</p>
-            <a href="#product" class="btn btn-primary">Shop Now</a>
-        </div>
-        <div class="hero-visual card anim">
-            <div class="blob"></div>
-            <div class="floating f1"><i class="fa-solid fa-leaf" style="color:#e78ca3"></i></div>
-            <div class="floating f2"><i class="fa-solid fa-heart" style="color:#e78ca3"></i></div>
-            <div class="floating f3"><i class="fa-solid fa-sparkles" style="color:#e78ca3"></i></div>
-        </div>
+  <div class="main-content" id="dashboard">
+    <div class="topbar d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="mb-1">Dashboard Admin</h3>
+        <div class="welcome">Welcome, <?= htmlspecialchars($nama_admin) ?> ✨</div>
+      </div>
+      <button class="topbar-cta">
+        <i class="fa-solid fa-sparkles me-1"></i> Premium Skincare Panel
+      </button>
     </div>
-</section>
 
-<section class="section" id="product">
-    <div class="container">
-        <h2 class="title">Produk Skincare</h2>
-        <p class="subtitle">Produk premium pilihan untuk kulit sehat dan glowing</p>
-        <div class="grid-products">
-            <?php while($p = mysqli_fetch_assoc($products)): ?>
-            <div class="product card anim">
-                <img src="<?php echo htmlspecialchars($p['gambar']); ?>" alt="<?php echo htmlspecialchars($p['nama_produk']); ?>">
-                <div class="product-body">
-                    <h3><?php echo htmlspecialchars($p['nama_produk']); ?></h3>
-                    <div class="price">Rp <?php echo number_format($p['harga'],0,',','.'); ?></div>
-                    <p class="small"><?php echo htmlspecialchars($p['deskripsi']); ?></p>
-                    <div style="margin-top:14px">
-                        <a class="btn btn-primary" href="index.php?add_cart=<?php echo $p['id_produk']; ?>"><i class="fa-solid fa-cart-plus"></i> Add to Cart</a>
-                    </div>
-                </div>
-            </div>
-            <?php endwhile; ?>
+    <div class="row g-3 mb-4">
+      <div class="col-md-3 col-sm-6">
+        <div class="card card-stat p-3">
+          <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+          <div class="card-title">Total Users</div>
+          <p class="card-value"><?= $total_users ?></p>
+          <small class="text-success">Data customer terdaftar</small>
         </div>
-    </div>
-</section>
-
-<section class="section" id="about">
-    <div class="container card" style="padding:34px">
-        <h2 class="title">About</h2>
-        <p class="subtitle">Toko skincare premium dengan tampilan clean, soft, dan feminin.</p>
-        <p>Kami menghadirkan produk skincare yang dipilih dengan konsep Korean skincare vibes, cocok untuk kamu yang suka tampilan elegan dan simple tapi tetap mewah.</p>
-    </div>
-</section>
-
-<section class="section" id="testimoni">
-    <div class="container">
-        <h2 class="title">Testimoni Customer</h2>
-        <p class="subtitle">Cerita cantik dari pelanggan kami</p>
-        <div class="testi-grid">
-            <div class="card testi anim">
-                <img class="avatar" src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200" alt="">
-                <h3>Putri</h3>
-                <p>Serumnya bagus banget, kulit jadi lebih glowing dan lembap.</p>
-            </div>
-            <div class="card testi anim">
-                <img class="avatar" src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200" alt="">
-                <h3>Salsa</h3>
-                <p>Packaging-nya aesthetic, produknya juga original.</p>
-            </div>
-            <div class="card testi anim">
-                <img class="avatar" src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200" alt="">
-                <h3>Amara</h3>
-                <p>Pelayanannya ramah, cocok banget buat skincare routine harian.</p>
-            </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="card card-stat p-3">
+          <div class="stat-icon"><i class="fa-solid fa-box"></i></div>
+          <div class="card-title">Total Products</div>
+          <p class="card-value"><?= $total_products ?></p>
+          <small class="text-success">Produk skincare aktif</small>
         </div>
-    </div>
-</section>
-
-<section class="section" id="contact">
-    <div class="container card" style="padding:34px;text-align:center">
-        <h2 class="title">Contact</h2>
-        <p class="subtitle">Instagram, TikTok, dan WhatsApp tersedia</p>
-        <div class="socials">
-            <a href="#"><i class="fa-brands fa-instagram"></i></a>
-            <a href="#"><i class="fa-brands fa-tiktok"></i></a>
-            <a href="https://wa.me/6281234567890?text=Halo%20kak%20%F0%9F%92%95%20Selamat%20datang%20di%20toko%20skincare%20kami.%20Ada%20yang%20bisa%20kami%20bantu%3F" target="_blank"><i class="fa-brands fa-whatsapp"></i></a>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="card card-stat p-3">
+          <div class="stat-icon"><i class="fa-solid fa-bag-shopping"></i></div>
+          <div class="card-title">Total Orders</div>
+          <p class="card-value"><?= $total_orders ?></p>
+          <small class="text-warning">Pesanan customer</small>
         </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="card card-stat p-3">
+          <div class="stat-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+          <div class="card-title">Revenue</div>
+          <p class="card-value">Rp <?= number_format($total_revenue, 0, ',', '.') ?></p>
+          <small class="text-success">Total pemasukan</small>
+        </div>
+      </div>
     </div>
-</section>
 
-<footer class="footer">© 2026 Glow Skin. All rights reserved.</footer>
-
-<div class="chatbot">
-    <a target="_blank" href="https://wa.me/6281234567890?text=Halo%20kak%20%F0%9F%92%95%20Selamat%20datang%20di%20toko%20skincare%20kami.%20Ada%20yang%20bisa%20kami%20bantu%3F">
-        <i class="fa-brands fa-whatsapp"></i>
-    </a>
-</div>
-
-<?php elseif($page == 'cart' && isset($_SESSION['user_id'])): ?>
-<div class="container section">
-    <h2 class="title">Shopping Cart</h2>
-    <div class="card cart-list">
-    <?php
-    $uid = $_SESSION['user_id'];
-    $cart = mysqli_query($conn,"SELECT cart.*, products.nama_produk, products.harga, products.gambar FROM cart JOIN products ON cart.id_produk=products.id_produk WHERE cart.id_user='$uid'");
-    $grand = 0;
-    while($c = mysqli_fetch_assoc($cart)):
-        $sub = $c['harga'] * $c['jumlah'];
-        $grand += $sub;
-    ?>
-        <div class="cart-item">
-            <img src="<?php echo htmlspecialchars($c['gambar']); ?>" alt="">
+    <div class="row g-3">
+      <div class="col-md-8">
+        <div class="card chart-card p-3">
+          <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <h3><?php echo htmlspecialchars($c['nama_produk']); ?></h3>
-                <p>Jumlah: <?php echo $c['jumlah']; ?></p>
-                <p>Subtotal: Rp <?php echo number_format($sub,0,',','.'); ?></p>
+              <h5 class="section-title">Sales Overview</h5>
+              <div class="section-subtitle">Grafik penjualan skincare</div>
             </div>
-            <a class="btn btn-outline" href="index.php?remove_cart=<?php echo $c['id_cart']; ?>">Hapus</a>
+            <span class="badge-soft">2026</span>
+          </div>
+          <canvas id="salesChart" height="120"></canvas>
         </div>
-    <?php endwhile; ?>
-        <div class="total-box">
-            <span>Total</span>
-            <span>Rp <?php echo number_format($grand,0,',','.'); ?></span>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card chart-card p-3 h-100">
+          <h5 class="section-title mb-2">Recent Activity</h5>
+          <div class="section-subtitle mb-3">Aktivitas terbaru sistem</div>
+          <ul class="list-group list-group-flush">
+            <li class="list-group-item"><i class="fa-solid fa-user-plus me-2 text-danger"></i> New user registered</li>
+            <li class="list-group-item"><i class="fa-solid fa-bag-shopping me-2 text-danger"></i> Order baru masuk</li>
+            <li class="list-group-item"><i class="fa-solid fa-box me-2 text-danger"></i> Produk baru ditambahkan</li>
+            <li class="list-group-item"><i class="fa-solid fa-whatsapp me-2 text-danger"></i> Notifikasi WhatsApp terkirim</li>
+          </ul>
         </div>
-        <div style="margin-top:20px">
-            <a href="index.php?page=checkout" class="btn btn-primary">Checkout</a>
-        </div>
+      </div>
     </div>
-</div>
 
-<?php elseif($page == 'checkout' && isset($_SESSION['user_id'])): ?>
-<div class="container section">
-    <h2 class="title">Checkout</h2>
-    <div class="card checkout-box">
-        <form method="post">
-            <input type="text" name="nama_customer" placeholder="Nama Customer" required>
-            <textarea name="alamat" rows="4" placeholder="Alamat lengkap" required></textarea>
-            <input type="text" name="nomor_whatsapp" placeholder="Nomor WhatsApp" required>
-            <input type="number" name="total_harga" placeholder="Total Pembayaran" required>
-            <button class="btn btn-primary" type="submit" name="checkout">Simpan Checkout</button>
-        </form>
-    </div>
-</div>
-
-<?php elseif($page == 'dashboard' && isset($_SESSION['user_id'])): ?>
-<div class="container section">
-    <h2 class="title">Admin Dashboard</h2>
-
-    <div class="section-box card admin-box">
-        <h3>Data User</h3>
-        <table class="admin-table">
-            <tr><th>ID</th><th>Nama</th><th>Umur</th><th>Kelamin</th><th>Kulit</th><th>Email</th></tr>
-            <?php
-            $userq = mysqli_query($conn, "SELECT * FROM users ORDER BY id DESC");
-            while($u = mysqli_fetch_assoc($userq)):
-            ?>
+    <div class="card table-card p-3 mt-4" id="users">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h5 class="section-title">Data Users</h5>
+          <div class="section-subtitle">Daftar user yang sudah register</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
             <tr>
-                <td><?php echo $u['id']; ?></td>
-                <td><?php echo htmlspecialchars($u['nama']); ?></td>
-                <td><?php echo $u['umur']; ?></td>
-                <td><?php echo $u['jenis_kelamin']; ?></td>
-                <td><?php echo $u['jenis_kulit']; ?></td>
-                <td><?php echo htmlspecialchars($u['email']); ?></td>
+              <th>ID</th>
+              <th>Nama</th>
+              <th>Umur</th>
+              <th>Jenis Kelamin</th>
+              <th>Jenis Kulit</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php while($u = mysqli_fetch_assoc($users)): ?>
+            <tr>
+              <td>#<?= $u['id'] ?></td>
+              <td><?= htmlspecialchars($u['nama']) ?></td>
+              <td><?= $u['umur'] ?></td>
+              <td><?= htmlspecialchars($u['jenis_kelamin']) ?></td>
+              <td><span class="badge-soft"><?= htmlspecialchars($u['jenis_kulit']) ?></span></td>
+              <td><?= htmlspecialchars($u['email']) ?></td>
             </tr>
             <?php endwhile; ?>
+          </tbody>
         </table>
+      </div>
     </div>
 
-    <div class="section-box card admin-box">
-        <h3>Data Pesanan</h3>
-        <table class="admin-table">
-            <tr><th>ID Order</th><th>User</th><th>Total</th><th>Alamat</th><th>WA</th><th>Tanggal</th></tr>
-            <?php
-            $orderq = mysqli_query($conn, "SELECT orders.*, users.nama FROM orders JOIN users ON orders.id_user=users.id ORDER BY id_order DESC");
-            while($o = mysqli_fetch_assoc($orderq)):
-            ?>
+    <div class="card table-card p-3 mt-4" id="orders">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h5 class="section-title">Data Orders</h5>
+          <div class="section-subtitle">Pesanan customer yang sudah checkout</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
             <tr>
-                <td><?php echo $o['id_order']; ?></td>
-                <td><?php echo htmlspecialchars($o['nama']); ?></td>
-                <td>Rp <?php echo number_format($o['total_harga'],0,',','.'); ?></td>
-                <td><?php echo htmlspecialchars($o['alamat']); ?></td>
-                <td><?php echo htmlspecialchars($o['nomor_whatsapp']); ?></td>
-                <td><?php echo $o['tanggal_order']; ?></td>
+              <th>ID Order</th>
+              <th>Customer</th>
+              <th>Total</th>
+              <th>Alamat</th>
+              <th>WhatsApp</th>
+              <th>Tanggal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php while($o = mysqli_fetch_assoc($orders)): ?>
+            <tr>
+              <td>#<?= $o['id_order'] ?></td>
+              <td><?= htmlspecialchars($o['nama']) ?></td>
+              <td>Rp <?= number_format($o['total_harga'], 0, ',', '.') ?></td>
+              <td><?= htmlspecialchars($o['alamat']) ?></td>
+              <td><?= htmlspecialchars($o['nomor_whatsapp']) ?></td>
+              <td><?= $o['tanggal_order'] ?></td>
             </tr>
             <?php endwhile; ?>
+          </tbody>
         </table>
+      </div>
     </div>
 
-    <div class="section-box card admin-box">
-        <h3>Data Produk</h3>
-        <table class="admin-table">
-            <tr><th>ID</th><th>Nama</th><th>Harga</th><th>Deskripsi</th><th>Gambar</th></tr>
-            <?php
-            $prodq = mysqli_query($conn, "SELECT * FROM products ORDER BY id_produk DESC");
-            while($pr = mysqli_fetch_assoc($prodq)):
-            ?>
+    <div class="card table-card p-3 mt-4" id="products">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h5 class="section-title">Data Products</h5>
+          <div class="section-subtitle">Kelola produk skincare premium</div>
+        </div>
+        <a href="tambah_produk.php" class="btn btn-pink">
+          <i class="fa-solid fa-plus me-1"></i> Tambah Produk
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
             <tr>
-                <td><?php echo $pr['id_produk']; ?></td>
-                <td><?php echo htmlspecialchars($pr['nama_produk']); ?></td>
-                <td>Rp <?php echo number_format($pr['harga'],0,',','.'); ?></td>
-                <td><?php echo htmlspecialchars($pr['deskripsi']); ?></td>
-                <td><?php echo htmlspecialchars($pr['gambar']); ?></td>
+              <th>ID</th>
+              <th>Gambar</th>
+              <th>Nama Produk</th>
+              <th>Harga</th>
+              <th>Deskripsi</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php while($p = mysqli_fetch_assoc($products)): ?>
+            <tr>
+              <td><?= $p['id_produk'] ?></td>
+              <td>
+                <img src="<?= htmlspecialchars($p['gambar']) ?>" class="product-thumb" alt="produk">
+              </td>
+              <td><?= htmlspecialchars($p['nama_produk']) ?></td>
+              <td>Rp <?= number_format($p['harga'], 0, ',', '.') ?></td>
+              <td><?= htmlspecialchars($p['deskripsi']) ?></td>
+              <td>
+                <a href="edit_produk.php?id=<?= $p['id_produk'] ?>" class="btn btn-sm btn-outline-soft action-btn" title="Edit">
+                  <i class="fa-solid fa-pen"></i>
+                </a>
+                <a href="hapus_produk.php?id=<?= $p['id_produk'] ?>" class="btn btn-sm btn-danger action-btn" title="Hapus" onclick="return confirm('Hapus produk ini?')">
+                  <i class="fa-solid fa-trash"></i>
+                </a>
+              </td>
             </tr>
             <?php endwhile; ?>
+          </tbody>
         </table>
+      </div>
     </div>
-</div>
-<?php endif; ?>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [{
+          label: 'Sales',
+          data: [12, 19, 15, 25, 22, 30],
+          borderColor: '#e78ca3',
+          backgroundColor: 'rgba(248, 215, 218, 0.35)',
+          tension: 0.4,
+          fill: true,
+          pointBackgroundColor: '#e78ca3',
+          pointBorderColor: '#fff',
+          pointRadius: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            display: true
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(0,0,0,0.05)'
+            }
+          },
+          x: {
+            grid: {
+              display: false
+            }
+          }
+        }
+      }
+    });
+  </script>
 
 </body>
 </html>
